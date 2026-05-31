@@ -204,7 +204,8 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
             data=data
         )
 
-        admin_id = getenv("ADMIN_ID")
+        admin_id_1 = getenv("ADMIN_ID_1")
+        admin_id_2 = getenv("ADMIN_ID_2")
 
         order_text = f"""
 🆕 Новый заказ
