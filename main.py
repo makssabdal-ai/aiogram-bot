@@ -54,6 +54,8 @@ async def main():
             allowed_updates=dp.resolve_used_update_types(),
             timeout=60
         )
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
     finally:
         # Гарантированное закрытие сессий при остановке
         await db.close()
