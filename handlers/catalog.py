@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo
+from aiogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo, Message
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from forms.user import Form
