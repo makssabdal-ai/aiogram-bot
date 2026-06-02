@@ -6,6 +6,12 @@ class Validators:
     """Утилитарные статические методы для валидации вводимых пользователем данных"""
 
     @staticmethod
+    def is_valid_fio(fio: str) -> bool:
+        # Разрешаем только кириллицу, пробелы и дефисы
+        pattern = r'^[А-Яа-яЁё\s\-]+$'
+        return bool(re.match(pattern, fio))
+
+    @staticmethod
     def validate_phone(phone: str) -> tuple[bool, str]:
         # Удаляем все символы, кроме цифр
         phone = re.sub(r'\D', '', phone)
