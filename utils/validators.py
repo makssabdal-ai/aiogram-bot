@@ -6,12 +6,6 @@ class Validators:
     """Утилитарные статические методы для валидации вводимых пользователем данных"""
 
     @staticmethod
-    def is_valid_fio(fio: str) -> bool:
-        # Разрешаем только кириллицу, пробелы и дефисы
-        pattern = r'^[А-Яа-яЁё\s\-]+$'
-        return bool(re.match(pattern, fio))
-
-    @staticmethod
     def validate_phone(phone: str) -> tuple[bool, str]:
         # Удаляем все символы, кроме цифр
         phone = re.sub(r'\D', '', phone)
@@ -67,6 +61,15 @@ class Validators:
     @staticmethod
     def validate_fullname(fullname: str) -> tuple[bool, str]:
         fullname = fullname.strip()
+
+        # 1. Проверка длины
         if len(fullname) < 3:
             return False, "❌ Имя слишком короткое. Введите корректное ФИО:"
+
+        # 2. Проверка на наличие цифр и спецсимволов
+        # Шаблон: только русские буквы (А-Я, а-я), пробелы (\s) и тире (\-)
+        # ^ - начало строки, $ - конец строки, + означает "один или более"
+        if not re.match(r'^[А-Яа-яЁё\s\-]+$', fullname):
+            return False, "❌ Имя содержит недопустимые символы. Используйте только буквы:"
+
         return True, fullname
