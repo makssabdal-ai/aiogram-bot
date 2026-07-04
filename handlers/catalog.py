@@ -71,12 +71,13 @@ async def callback_product_detail(callback: CallbackQuery, db: Database):
     text = f"<b>{item['title']}</b>\n\n{item['description']}"
     reply_markup = Keyboards.get_product_back_keyboard()
 
-    if item.get("file_id"):
+    media_id = item.get("file_id")
+    if media_id:
         # Если у товара прикреплено изображение
         try:
             await callback.message.edit_media(
                 media=InputMediaPhoto(
-                    media=item["file_id"],
+                    media=media_id,
                     caption=text,
                     parse_mode="HTML"
                 ),
@@ -87,7 +88,7 @@ async def callback_product_detail(callback: CallbackQuery, db: Database):
             # В таком случае удаляем старое текстовое и отправляем новое с фото.
             await callback.message.delete()
             await callback.message.answer_photo(
-                photo=item["file_id"],
+                photo=media_id,
                 caption=text,
                 parse_mode="HTML",
                 reply_markup=reply_markup
@@ -160,19 +161,44 @@ async def send_works_chunk(message: Message, works: list, offset: int, state: FS
     chunk = works[offset:offset + limit]
 
     media = []
+    singles = []
     for index, work in enumerate(chunk):
         # Красивую подпись ставим только к самой первой фотографии в альбоме
         caption = "📸 Наши готовые работы" if index == 0 and offset == 0 else None
 
+        media_id = work.get("file_id")
+        if not media_id:
+            continue
+
         if work["media_type"] == "photo":
             media.append(InputMediaPhoto(
-                media=work["file_id"], caption=caption))
+                media=media_id, caption=caption))
+            singles.append(("photo", media_id, caption))
         elif work["media_type"] == "video":
             media.append(InputMediaVideo(
-                media=work["file_id"], caption=caption))
+                media=media_id, caption=caption))
+            singles.append(("video", media_id, caption))
 
     if media:
-        await message.answer_media_group(media=media)
+        try:
+            await message.answer_media_group(media=media)
+        except TelegramBadRequest:
+            sent_count = 0
+            for media_type, media_id, caption in singles:
+                try:
+                    if media_type == "photo":
+                        await message.answer_photo(photo=media_id, caption=caption)
+                    elif media_type == "video":
+                        await message.answer_video(video=media_id, caption=caption)
+                    sent_count += 1
+                except TelegramBadRequest:
+                    continue
+            if sent_count == 0:
+                await message.answer(
+                    text="Не удалось отправить работы: в базе указаны недействительные file_id.",
+                    reply_markup=Keyboards.get_back_keyboard()
+                )
+                return
 
     # Высчитываем новый оффсет для следующего шага
     new_offset = offset + limit
