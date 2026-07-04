@@ -1,4 +1,6 @@
 .env
 .venv/
+.venv-broken/
+.python-nuget/
 __pycache__/
 *.pyc

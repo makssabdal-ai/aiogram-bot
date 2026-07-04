@@ -125,7 +125,10 @@ async def process_media_skip(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Шаг пропущен.")
     await state.update_data(media_type=None, media=None)
     await state.set_state(Form.additional_info)
-    await callback.message.answer("Введите дополнительную информацию или пожелания (если есть):")
+    await callback.message.answer(
+        "Введите дополнительную информацию или пожелания (если есть):",
+        reply_markup=Keyboards.get_miss_keyboard()
+    )
 
 
 @router.message(StateFilter(Form.media))
@@ -140,12 +143,27 @@ async def process_media_upload(message: Message, state: FSMContext):
         return
 
     await state.set_state(Form.additional_info)
-    await message.answer("Почти готово! Укажите дополнительную информацию (для доставки — точный адрес и время):")
+    await message.answer(
+        "Почти готово! Укажите дополнительную информацию (для доставки — точный адрес и время):",
+        reply_markup=Keyboards.get_miss_keyboard()
+    )
 
 
 @router.message(StateFilter(Form.additional_info), F.text)
 async def process_additional_info(message: Message, state: FSMContext):
     await state.update_data(additional_info=message.text)
+    await send_order_summary(message, state)
+
+
+@router.callback_query(Form.additional_info, F.data == "skip")
+async def process_additional_info_skip(callback: CallbackQuery, state: FSMContext):
+    """Пропуск шага с дополнительной информацией"""
+    await callback.answer("Шаг пропущен.")
+    await state.update_data(additional_info="Не указано")
+    await send_order_summary(callback.message, state)
+
+
+async def send_order_summary(message: Message, state: FSMContext):
     data = await state.get_data()
 
     media_text = "Фото" if data.get("media_type") == "photo" else "Видео" if data.get(
