@@ -29,13 +29,12 @@ class Validators:
         url = url.strip()
         telegram_patterns = [
             r'^@[\w]{3,32}$',
-            r'^https?://t\.me/[\w]{3,32}$',
-            r'^https?://telegram\.me/[\w]{3,32}$'
+            r'^https?://t\.me/[\w]{3,32}/?$',
+            r'^https?://telegram\.me/[\w]{3,32}/?$'
         ]
         vk_patterns = [
-            r'^https?://vk\.com/[\w.]+$',
-            r'^https?://www\.vk\.com/[\w.]+$',
-            r'^vk\.com/[\w.]+$'
+            r'^(https?://)?(www\.)?(m\.)?vk\.com/[A-Za-z0-9_.]+/?(\?.*)?$',
+            r'^(https?://)?vk\.me/[A-Za-z0-9_.]+/?(\?.*)?$',
         ]
 
         for pattern in telegram_patterns + vk_patterns:
