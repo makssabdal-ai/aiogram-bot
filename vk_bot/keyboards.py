@@ -56,7 +56,7 @@ def main_menu() -> str:
             [_button("Мои работы 📸", "view_works")],
             [_button("Отзывы 💬", "reviews")],
             [_button("Написать мне ✉️", "contact_me")],
-            [_button("Обо мне 👩‍🍳", "about")],
+            [_button("Обо мне 👩‍🍳", "about"), _button("Согласие", "personal_data_info")],
             [_button("Сделать заказ ✨", "make_order", "positive")],
         ]
     )
@@ -74,9 +74,25 @@ def skip_menu() -> str:
     return keyboard([[_button("Пропустить шаг", "skip", "primary")]], inline=True)
 
 
-def catalog_menu(items) -> str:
+def paged_rows(buttons: list[dict], page: int, page_size: int = 5, back_cmd: str = "back") -> list[list[dict]]:
+    page = max(page, 0)
+    start = page * page_size
+    chunk = buttons[start:start + page_size]
+    rows = [[button] for button in chunk]
+
+    nav = []
+    if page > 0:
+        nav.append(_button("Назад", f"{back_cmd}:{page - 1}"))
+    if start + page_size < len(buttons):
+        nav.append(_button("Еще", f"{back_cmd}:{page + 1}", "primary"))
+    if nav:
+        rows.append(nav)
+    return rows
+
+
+def catalog_menu(items, page: int = 0) -> str:
     product_buttons = [_button(str(item["title"]), f"product:{item['id']}", "primary") for item in items]
-    rows = [[button] for button in product_buttons[:8]]
+    rows = paged_rows(product_buttons, page, page_size=4, back_cmd="catalog_page")
     rows.append([_button("⬅️ В главное меню", "back")])
     return keyboard(rows)
 
@@ -93,20 +109,18 @@ def works_menu(has_more: bool) -> str:
     return keyboard(rows)
 
 
-def cake_menu() -> str:
-    return keyboard(
-        [
-            [_button("Банан-карамель", "cake_1")],
-            [_button("Баунти", "cake_2")],
-            [_button("Молочная девочка", "cake_3")],
-            [_button("Красный бархат", "cake_4")],
-            [_button("Фисташка-малина", "cake_5")],
-            [_button("Медовик", "cake_6")],
-            [_button("Сникерс", "cake_7")],
-            [_button("Черный лес", "cake_8")],
-        ],
-        inline=True,
-    )
+def cake_menu(page: int = 0) -> str:
+    buttons = [
+        _button("Банан-карамель", "cake_1"),
+        _button("Баунти", "cake_2"),
+        _button("Молочная девочка", "cake_3"),
+        _button("Красный бархат", "cake_4"),
+        _button("Фисташка-малина", "cake_5"),
+        _button("Медовик", "cake_6"),
+        _button("Сникерс", "cake_7"),
+        _button("Черный лес", "cake_8"),
+    ]
+    return keyboard(paged_rows(buttons, page, back_cmd="cake_page"), inline=True)
 
 
 def size_menu() -> str:

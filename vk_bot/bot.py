@@ -150,6 +150,9 @@ class VKCakeBot:
         if command == "catalog":
             await self.show_catalog(peer_id)
             return True
+        if command.startswith("catalog_page:"):
+            await self.show_catalog(peer_id, int(command.split(":", 1)[1]))
+            return True
         if command.startswith("product:"):
             await self.show_product(peer_id, command)
             return True
@@ -168,6 +171,9 @@ class VKCakeBot:
         if command == "contact_me":
             await self.send_vk(peer_id, CONTACTS_HTML, keyboard=keyboards.back_menu())
             return True
+        if command == "personal_data_info":
+            await self.send_vk(peer_id, vk_consent_text(), keyboard=keyboards.back_menu())
+            return True
         if command == "make_order":
             if not await self.ensure_personal_data_consent(peer_id, user_id):
                 return True
@@ -183,6 +189,13 @@ class VKCakeBot:
         state = self.states.get(user_id)
         if state == "cake" and command in CAKE_NAMES:
             await self.set_cake(peer_id, user_id, command)
+            return True
+        if state == "cake" and command.startswith("cake_page:"):
+            await self.send_vk(
+                peer_id,
+                "Теперь выберите торт из предложенных:",
+                keyboard=keyboards.cake_menu(int(command.split(":", 1)[1])),
+            )
             return True
         if state == "size" and command in SIZES:
             await self.set_size(peer_id, user_id, command)
@@ -248,11 +261,7 @@ class VKCakeBot:
                 return
             self.data[user_id]["account"] = text
             self.states[user_id] = "cake"
-            await self.send_vk(
-                peer_id,
-                "Теперь выберите торт из предложенных:",
-                keyboard=keyboards.cake_menu(),
-            )
+            await self.send_vk(peer_id, "Теперь выберите торт из предложенных:", keyboard=keyboards.cake_menu())
             return
 
         if state == "date":
@@ -302,7 +311,7 @@ class VKCakeBot:
 
         await self.send_vk(peer_id, "Главное меню:", keyboard=keyboards.main_menu())
 
-    async def show_catalog(self, peer_id: int):
+    async def show_catalog(self, peer_id: int, page: int = 0):
         items = await self.db.get_catalog()
         if not items:
             await self.send_vk(peer_id, "Каталог пока пуст 😢", keyboard=keyboards.back_menu())
@@ -310,7 +319,7 @@ class VKCakeBot:
         await self.send_vk(
             peer_id,
             "🛍 <b>Каталог товаров:</b>\nВыберите интересующую позицию:",
-            keyboard=keyboards.catalog_menu(items),
+            keyboard=keyboards.catalog_menu(items, page),
         )
 
     async def show_product(self, peer_id: int, command: str):
@@ -662,6 +671,8 @@ class VKCakeBot:
             return "contact_me"
         if normalized in ("обо мне 👩‍🍳", "обо мне"):
             return "about"
+        if normalized in ("согласие", "персональные данные", "согласие на обработку данных"):
+            return "personal_data_info"
         if normalized in ("сделать заказ ✨", "сделать заказ"):
             return "make_order"
         if normalized == "показать еще":
