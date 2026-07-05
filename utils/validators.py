@@ -33,8 +33,8 @@ class Validators:
             r'^https?://telegram\.me/[\w]{3,32}/?$'
         ]
         vk_patterns = [
-            r'^(https?://)?(www\.)?(m\.)?vk\.com/[A-Za-z0-9_.]+/?(\?.*)?$',
-            r'^(https?://)?vk\.me/[A-Za-z0-9_.]+/?(\?.*)?$',
+            r'^(https?://)?(www\.)?(m\.)?vk\.(com|ru)/[A-Za-z0-9_.]+/?(\?.*)?$',
+            r'^(https?://)?vk\.(me|ru)/[A-Za-z0-9_.]+/?(\?.*)?$',
         ]
 
         for pattern in telegram_patterns + vk_patterns:
