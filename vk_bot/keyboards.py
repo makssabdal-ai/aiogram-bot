@@ -8,7 +8,7 @@ def clean_label(text: str) -> str:
     return unescape(re.sub(r"<[^>]*>", "", text or "")).strip()
 
 
-def wrap_label(text: str, limit: int = 24) -> str:
+def wrap_label(text: str, limit: int = 18) -> str:
     text = clean_label(text)
     if len(text) <= limit or "\n" in text:
         return text
@@ -52,18 +52,21 @@ def keyboard(rows: list[list[dict]], inline: bool = True, one_time: bool = False
 def main_menu() -> str:
     return keyboard(
         [
-            [_button("Каталог товаров 🛍", "catalog")],
-            [_button("Мои работы 📸", "view_works")],
-            [_button("Отзывы 💬", "reviews")],
-            [_button("Написать мне ✉️", "contact_me")],
-            [_button("Обо мне 👩‍🍳", "about"), _button("Согласие", "personal_data_info")],
-            [_button("Сделать заказ ✨", "make_order", "positive")],
+            [_button("Каталог товаров 🛍", "catalog"), _button("Мои работы 📸", "view_works")],
+            [_button("Отзывы 💬", "reviews"), _button("Написать мне ✉️", "contact_me")],
+            [_button("Обо мне 👩‍🍳", "about")],
+            [_button("✨ Сделать заказ ✨", "make_order", "positive")],
         ]
     )
 
 
 def personal_data_consent_menu() -> str:
-    return keyboard([[_button("Согласен(на)", "personal_data_consent_accept", "positive")]])
+    return keyboard(
+        [
+            [_button("Я прочитал(а) и согласен(на)", "personal_data_consent_accept", "positive")],
+            [_button("В главное меню", "back", "primary")],
+        ]
+    )
 
 
 def back_menu() -> str:
@@ -74,25 +77,9 @@ def skip_menu() -> str:
     return keyboard([[_button("Пропустить шаг", "skip", "primary")]], inline=True)
 
 
-def paged_rows(buttons: list[dict], page: int, page_size: int = 5, back_cmd: str = "back") -> list[list[dict]]:
-    page = max(page, 0)
-    start = page * page_size
-    chunk = buttons[start:start + page_size]
-    rows = [[button] for button in chunk]
-
-    nav = []
-    if page > 0:
-        nav.append(_button("Назад", f"{back_cmd}:{page - 1}"))
-    if start + page_size < len(buttons):
-        nav.append(_button("Еще", f"{back_cmd}:{page + 1}", "primary"))
-    if nav:
-        rows.append(nav)
-    return rows
-
-
-def catalog_menu(items, page: int = 0) -> str:
+def catalog_menu(items) -> str:
     product_buttons = [_button(str(item["title"]), f"product:{item['id']}", "primary") for item in items]
-    rows = paged_rows(product_buttons, page, page_size=4, back_cmd="catalog_page")
+    rows = [product_buttons[index:index + 2] for index in range(0, min(len(product_buttons), 8), 2)]
     rows.append([_button("⬅️ В главное меню", "back")])
     return keyboard(rows)
 
@@ -109,25 +96,22 @@ def works_menu(has_more: bool) -> str:
     return keyboard(rows)
 
 
-def cake_menu(page: int = 0) -> str:
-    buttons = [
-        _button("Банан-карамель", "cake_1"),
-        _button("Баунти", "cake_2"),
-        _button("Молочная девочка", "cake_3"),
-        _button("Красный бархат", "cake_4"),
-        _button("Фисташка-малина", "cake_5"),
-        _button("Медовик", "cake_6"),
-        _button("Сникерс", "cake_7"),
-        _button("Черный лес", "cake_8"),
-    ]
-    return keyboard(paged_rows(buttons, page, back_cmd="cake_page"), inline=True)
+def cake_menu() -> str:
+    return keyboard(
+        [
+            [_button("Банан-карамель", "cake_1"), _button("Баунти", "cake_2")],
+            [_button("Молочная девочка", "cake_3"), _button("Красный бархат", "cake_4")],
+            [_button("Фисташка-малина", "cake_5"), _button("Медовик", "cake_6")],
+            [_button("Сникерс", "cake_7"), _button("Черный лес", "cake_8")],
+        ],
+        inline=True,
+    )
 
 
 def size_menu() -> str:
     return keyboard(
         [
-            [_button("Стандарт 18 см", "size_standard")],
-            [_button("Бенто 14 см", "size_bento")],
+            [_button("Стандарт (18см)", "size_standard"), _button("Бенто (14см)", "size_bento")],
         ],
         inline=True,
     )
@@ -146,8 +130,7 @@ def logistics_menu() -> str:
 def check_menu() -> str:
     return keyboard(
         [
-            [_button("Все верно", "confirm_order", "positive")],
-            [_button("Заново", "edit_order", "negative")],
+            [_button("Все верно", "confirm_order", "positive"), _button("Заново", "edit_order", "negative")],
         ],
         inline=True,
     )

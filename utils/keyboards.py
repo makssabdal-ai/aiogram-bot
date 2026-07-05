@@ -37,10 +37,6 @@ class Keyboards:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="Согласие на обработку данных", callback_data="personal_data_info")
-                ],
-                [
-                    InlineKeyboardButton(
                         text="✨ Сделать заказ ✨", callback_data="make_order")
                 ]
             ]
@@ -53,6 +49,12 @@ class Keyboards:
                 InlineKeyboardButton(
                     text="Я прочитал(а) и согласен(на)",
                     callback_data=CONSENT_CALLBACK,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ В главное меню",
+                    callback_data="back",
                 )
             ]]
         )

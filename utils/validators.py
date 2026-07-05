@@ -28,7 +28,6 @@ class Validators:
     def validate_social_account(url: str) -> tuple[bool, str]:
         url = url.strip()
         telegram_patterns = [
-            r'^[A-Za-z0-9_]{3,32}$',
             r'^@[\w]{3,32}$',
             r'^https?://t\.me/[\w]{3,32}$',
             r'^https?://telegram\.me/[\w]{3,32}$'

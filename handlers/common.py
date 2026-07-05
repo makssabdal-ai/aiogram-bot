@@ -4,7 +4,6 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from database.db import Database
-from utils.consent import telegram_consent_text
 from utils.keyboards import Keyboards
 
 router = Router()
@@ -82,16 +81,6 @@ async def callback_about(callback: CallbackQuery):
     except Exception:
         # Фолбэк на случай, если file_id недействителен на другом токене
         await callback.message.answer(about_text, reply_markup=Keyboards.get_back_keyboard())
-
-
-@router.callback_query(F.data == "personal_data_info")
-async def callback_personal_data_info(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer(
-        telegram_consent_text(),
-        reply_markup=Keyboards.get_back_keyboard(),
-        parse_mode="HTML",
-    )
 
 
 @router.callback_query(F.data == "contact_me")
