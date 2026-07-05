@@ -14,9 +14,15 @@ load_dotenv(override=True)
 VK_GROUP_TOKEN = getenv("VK_GROUP_TOKEN")
 VK_GROUP_ID = getenv("VK_GROUP_ID")
 DATABASE_URL = getenv("DATABASE_URL")
+BOT_TOKEN = getenv("BOT_TOKEN") or getenv("BOT_TOKEN ")
+ADMIN_IDS = getenv("ADMIN_IDS") or getenv("ADMIN_IDS ")
 
 if not VK_GROUP_TOKEN or not VK_GROUP_ID or not DATABASE_URL:
     print("Критическая ошибка: VK_GROUP_TOKEN, VK_GROUP_ID или DATABASE_URL не найдены в .env")
+    sys.exit(1)
+
+if not BOT_TOKEN or not ADMIN_IDS:
+    print("Критическая ошибка: BOT_TOKEN или ADMIN_IDS не найдены. VK-бот не сможет отправлять заказы администраторам в Telegram.")
     sys.exit(1)
 
 

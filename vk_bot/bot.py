@@ -510,10 +510,12 @@ class VKCakeBot:
             f"Логистика: {self.html_escape(order['logistics'])}\n\n"
             f"Доп. информация:\n{self.html_escape(order['additional_info'])}"
         )
-        await self.notify_telegram_admins(order_text, order)
+        notified = await self.notify_telegram_admins(order_text, order)
 
         self.states.pop(user_id, None)
         self.data.pop(user_id, None)
+        if not notified:
+            print(f"[VK ERROR] Order from user {user_id} was saved, but Telegram admin notification failed")
         await self.send_vk(
             peer_id,
             "Заказ принят! Скоро я свяжусь с вами для подтверждения 😊",
@@ -551,19 +553,22 @@ class VKCakeBot:
         except asyncio.CancelledError:
             return
 
-    async def notify_telegram_admins(self, text: str, order: dict[str, Any]):
+    async def notify_telegram_admins(self, text: str, order: dict[str, Any]) -> bool:
         token = self.env_value("BOT_TOKEN")
         admin_ids = self.telegram_admin_ids()
         if not token or not admin_ids:
             print("[VK ERROR] BOT_TOKEN or ADMIN_IDS is not configured; Telegram admin notification skipped")
-            return
+            return False
 
+        sent_any = False
         async with aiohttp.ClientSession() as session:
             for admin_id in admin_ids:
                 try:
-                    await self.send_telegram_order(session, token, admin_id, text, order)
+                    if await self.send_telegram_order(session, token, admin_id, text, order):
+                        sent_any = True
                 except Exception as exc:
                     print(f"[VK ERROR] Failed to notify Telegram admin {admin_id}: {exc}")
+        return sent_any
 
     async def send_telegram_order(
         self,
@@ -572,7 +577,7 @@ class VKCakeBot:
         admin_id: int,
         text: str,
         order: dict[str, Any],
-    ):
+    ) -> bool:
         media_url = order.get("media_url")
         media_type = order.get("media_type")
         vk_attachment = order.get("media")
@@ -589,7 +594,8 @@ class VKCakeBot:
                     "parse_mode": "HTML",
                 },
             ):
-                return
+                print(f"[VK] Telegram admin {admin_id} notified with photo")
+                return True
 
         if media_url and media_type == "video":
             if await self.telegram_api_post(
@@ -603,14 +609,15 @@ class VKCakeBot:
                     "parse_mode": "HTML",
                 },
             ):
-                return
+                print(f"[VK] Telegram admin {admin_id} notified with video")
+                return True
 
         if vk_attachment:
             text = f"{text}\n\nVK-пример: {self.html_escape(vk_attachment)}"
             if media_url:
                 text = f"{text}\nСсылка на медиа: {self.html_escape(media_url)}"
 
-        await self.telegram_api_post(
+        if await self.telegram_api_post(
             session,
             token,
             "sendMessage",
@@ -620,7 +627,10 @@ class VKCakeBot:
                 "parse_mode": "HTML",
                 "disable_web_page_preview": False,
             },
-        )
+        ):
+            print(f"[VK] Telegram admin {admin_id} notified with text")
+            return True
+        return False
 
     @staticmethod
     async def telegram_api_post(
