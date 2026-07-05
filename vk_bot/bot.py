@@ -578,29 +578,31 @@ class VKCakeBot:
         vk_attachment = order.get("media")
 
         if media_url and media_type == "photo":
-            await session.post(
-                f"https://api.telegram.org/bot{token}/sendPhoto",
-                json={
+            if await self.telegram_api_post(
+                session,
+                token,
+                "sendPhoto",
+                {
                     "chat_id": admin_id,
                     "photo": media_url,
                     "caption": text,
                     "parse_mode": "HTML",
                 },
-            )
-            return
+            ):
+                return
 
         if media_url and media_type == "video":
-            response = await session.post(
-                f"https://api.telegram.org/bot{token}/sendVideo",
-                json={
+            if await self.telegram_api_post(
+                session,
+                token,
+                "sendVideo",
+                {
                     "chat_id": admin_id,
                     "video": media_url,
                     "caption": text,
                     "parse_mode": "HTML",
                 },
-            )
-            data = await response.json(content_type=None)
-            if data.get("ok"):
+            ):
                 return
 
         if vk_attachment:
@@ -608,15 +610,35 @@ class VKCakeBot:
             if media_url:
                 text = f"{text}\nСсылка на медиа: {self.html_escape(media_url)}"
 
-        await session.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={
+        await self.telegram_api_post(
+            session,
+            token,
+            "sendMessage",
+            {
                 "chat_id": admin_id,
                 "text": text,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": False,
             },
         )
+
+    @staticmethod
+    async def telegram_api_post(
+        session: aiohttp.ClientSession,
+        token: str,
+        method: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        response = await session.post(
+            f"https://api.telegram.org/bot{token}/{method}",
+            json=payload,
+        )
+        data = await response.json(content_type=None)
+        if data.get("ok"):
+            return True
+
+        print(f"[VK ERROR] Telegram {method} failed: {data}")
+        return False
 
     @staticmethod
     def _get_payload(message: dict[str, Any]) -> dict[str, Any]:
