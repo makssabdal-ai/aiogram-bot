@@ -646,11 +646,24 @@ class VKCakeBot:
         if normalized in ("/help", "help", "помощь"):
             return "help"
         if normalized in (
+            "согласен(на)",
             "я прочитал(а) и согласен(на)",
             "я прочитал и согласен",
             "я прочитала и согласна",
         ):
             return "personal_data_consent_accept"
+        if normalized in ("каталог товаров 🛍", "каталог товаров", "каталог"):
+            return "catalog"
+        if normalized in ("мои работы 📸", "мои работы", "работы"):
+            return "view_works"
+        if normalized in ("отзывы 💬", "отзывы"):
+            return "reviews"
+        if normalized in ("написать мне ✉️", "написать мне"):
+            return "contact_me"
+        if normalized in ("обо мне 👩‍🍳", "обо мне"):
+            return "about"
+        if normalized in ("сделать заказ ✨", "сделать заказ"):
+            return "make_order"
         if normalized == "показать еще":
             return "works_more"
         if normalized in ("в главное меню", "⬅️ в главное меню"):

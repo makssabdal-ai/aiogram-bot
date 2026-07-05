@@ -28,7 +28,6 @@ class Database:
                 personal_data_consent_at TIMESTAMP WITH TIME ZONE,
                 personal_data_consent_platform TEXT,
                 personal_data_consent_document TEXT,
-                personal_data_consent_ip TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')
             )
             """)
@@ -36,7 +35,6 @@ class Database:
             await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_at TIMESTAMP WITH TIME ZONE")
             await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_platform TEXT")
             await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_document TEXT")
-            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_ip TEXT")
 
             # Каталог
             await conn.execute("""
@@ -138,7 +136,6 @@ class Database:
         username: str | None = None,
         platform: str | None = None,
         document: str | None = None,
-        ip: str | None = None,
     ):
         async with self.pool.acquire() as conn:
             await conn.execute("""
@@ -149,19 +146,17 @@ class Database:
                     personal_data_consent,
                     personal_data_consent_at,
                     personal_data_consent_platform,
-                    personal_data_consent_document,
-                    personal_data_consent_ip
+                    personal_data_consent_document
                 )
-                VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, $4, $5, $6)
+                VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, $4, $5)
                 ON CONFLICT (telegram_id) DO UPDATE SET
                     fullname = COALESCE(EXCLUDED.fullname, users.fullname),
                     username = COALESCE(EXCLUDED.username, users.username),
                     personal_data_consent = TRUE,
                     personal_data_consent_at = CURRENT_TIMESTAMP,
                     personal_data_consent_platform = EXCLUDED.personal_data_consent_platform,
-                    personal_data_consent_document = EXCLUDED.personal_data_consent_document,
-                    personal_data_consent_ip = EXCLUDED.personal_data_consent_ip
-            """, telegram_id, fullname, username, platform, document, ip)
+                    personal_data_consent_document = EXCLUDED.personal_data_consent_document
+            """, telegram_id, fullname, username, platform, document)
 
     async def get_users(self):
         async with self.pool.acquire() as conn:

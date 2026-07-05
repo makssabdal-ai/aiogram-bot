@@ -8,7 +8,7 @@ def clean_label(text: str) -> str:
     return unescape(re.sub(r"<[^>]*>", "", text or "")).strip()
 
 
-def wrap_label(text: str, limit: int = 18) -> str:
+def wrap_label(text: str, limit: int = 24) -> str:
     text = clean_label(text)
     if len(text) <= limit or "\n" in text:
         return text
@@ -52,16 +52,18 @@ def keyboard(rows: list[list[dict]], inline: bool = True, one_time: bool = False
 def main_menu() -> str:
     return keyboard(
         [
-            [_button("Каталог товаров 🛍", "catalog"), _button("Мои работы 📸", "view_works")],
-            [_button("Отзывы 💬", "reviews"), _button("Написать мне ✉️", "contact_me")],
+            [_button("Каталог товаров 🛍", "catalog")],
+            [_button("Мои работы 📸", "view_works")],
+            [_button("Отзывы 💬", "reviews")],
+            [_button("Написать мне ✉️", "contact_me")],
             [_button("Обо мне 👩‍🍳", "about")],
-            [_button("✨ Сделать заказ ✨", "make_order", "positive")],
+            [_button("Сделать заказ ✨", "make_order", "positive")],
         ]
     )
 
 
 def personal_data_consent_menu() -> str:
-    return keyboard([[_button("Я прочитал(а) и согласен(на)", "personal_data_consent_accept", "positive")]])
+    return keyboard([[_button("Согласен(на)", "personal_data_consent_accept", "positive")]])
 
 
 def back_menu() -> str:
@@ -74,7 +76,7 @@ def skip_menu() -> str:
 
 def catalog_menu(items) -> str:
     product_buttons = [_button(str(item["title"]), f"product:{item['id']}", "primary") for item in items]
-    rows = [product_buttons[index:index + 2] for index in range(0, min(len(product_buttons), 8), 2)]
+    rows = [[button] for button in product_buttons[:8]]
     rows.append([_button("⬅️ В главное меню", "back")])
     return keyboard(rows)
 
@@ -94,10 +96,14 @@ def works_menu(has_more: bool) -> str:
 def cake_menu() -> str:
     return keyboard(
         [
-            [_button("Банан-карамель", "cake_1"), _button("Баунти", "cake_2")],
-            [_button("Молочная девочка", "cake_3"), _button("Красный бархат", "cake_4")],
-            [_button("Фисташка-малина", "cake_5"), _button("Медовик", "cake_6")],
-            [_button("Сникерс", "cake_7"), _button("Черный лес", "cake_8")],
+            [_button("Банан-карамель", "cake_1")],
+            [_button("Баунти", "cake_2")],
+            [_button("Молочная девочка", "cake_3")],
+            [_button("Красный бархат", "cake_4")],
+            [_button("Фисташка-малина", "cake_5")],
+            [_button("Медовик", "cake_6")],
+            [_button("Сникерс", "cake_7")],
+            [_button("Черный лес", "cake_8")],
         ],
         inline=True,
     )
@@ -106,7 +112,8 @@ def cake_menu() -> str:
 def size_menu() -> str:
     return keyboard(
         [
-            [_button("Стандарт (18см)", "size_standard"), _button("Бенто (14см)", "size_bento")],
+            [_button("Стандарт 18 см", "size_standard")],
+            [_button("Бенто 14 см", "size_bento")],
         ],
         inline=True,
     )
@@ -125,7 +132,8 @@ def logistics_menu() -> str:
 def check_menu() -> str:
     return keyboard(
         [
-            [_button("Все верно", "confirm_order", "positive"), _button("Заново", "edit_order", "negative")],
+            [_button("Все верно", "confirm_order", "positive")],
+            [_button("Заново", "edit_order", "negative")],
         ],
         inline=True,
     )
