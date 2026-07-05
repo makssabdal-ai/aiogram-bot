@@ -102,9 +102,10 @@ class VKClient:
     ):
         params: dict[str, Any] = {
             "peer_id": peer_id,
-            "message": text,
             "random_id": secrets.randbits(31),
         }
+        if text:
+            params["message"] = text
         if keyboard:
             params["keyboard"] = keyboard
         if attachment:

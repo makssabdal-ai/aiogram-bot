@@ -45,10 +45,14 @@ class Database:
             CREATE TABLE IF NOT EXISTS works (
                 id SERIAL PRIMARY KEY,
                 file_id TEXT,
+                vk_file_id TEXT,
                 media_type TEXT,
+                vk_media_type TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
+            await conn.execute("ALTER TABLE works ADD COLUMN IF NOT EXISTS vk_file_id TEXT")
+            await conn.execute("ALTER TABLE works ADD COLUMN IF NOT EXISTS vk_media_type TEXT")
 
             # Отзывы
             await conn.execute("""
@@ -57,10 +61,12 @@ class Database:
                 user_id BIGINT,
                 text TEXT,
                 file_id TEXT,
+                vk_file_id TEXT,
                 media_type TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
+            await conn.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS vk_file_id TEXT")
 
             # Заказы
             await conn.execute("""

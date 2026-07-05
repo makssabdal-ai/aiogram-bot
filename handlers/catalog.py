@@ -10,6 +10,13 @@ from utils.keyboards import Keyboards
 router = Router()
 
 
+def telegram_works(works: list) -> list:
+    return [
+        work for work in works
+        if work.get("file_id") and work.get("media_type") in ("photo", "video")
+    ]
+
+
 @router.callback_query(F.data == "catalog")
 async def callback_catalog(callback: CallbackQuery, db: Database):
     """Отображение каталога товаров"""
@@ -118,7 +125,7 @@ async def callback_view_works(callback: CallbackQuery, state: FSMContext, db: Da
     """Первоначальный запуск просмотра галереи готовых работ порциями"""
     await callback.answer("Загружаю портфолио...")
 
-    works = await db.get_works()
+    works = telegram_works(await db.get_works())
     if not works:
         await callback.message.answer(
             text="Пока нет доступных работ 😢",
@@ -149,7 +156,7 @@ async def callback_more_works(callback: CallbackQuery, state: FSMContext, db: Da
     user_data = await state.get_data()
     offset = user_data.get("works_offset", 0)
 
-    works = await db.get_works()
+    works = telegram_works(await db.get_works())
 
     # Отправляем следующую пачку
     await send_works_chunk(callback.message, works, offset=offset, state=state)

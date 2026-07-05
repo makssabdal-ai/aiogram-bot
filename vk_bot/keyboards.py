@@ -79,6 +79,14 @@ def product_back_menu() -> str:
     return keyboard([[_button("Назад в каталог", "catalog", "primary")]])
 
 
+def works_menu(has_more: bool) -> str:
+    rows = []
+    if has_more:
+        rows.append([_button("Показать еще", "works_more", "primary")])
+    rows.append([_button("В главное меню", "back")])
+    return keyboard(rows)
+
+
 def cake_menu() -> str:
     return keyboard(
         [

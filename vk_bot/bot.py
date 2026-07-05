@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from datetime import datetime
@@ -36,6 +37,7 @@ ABOUT_HTML = (
     "На заказ работаю около двух лет, и за это время собрала не только навыки, "
     "но и искренние «спасибо» от клиентов. 🙏💕"
 )
+ABOUT_VK_PHOTO_ID = "photo491400521_457250277_1573833bd4fde8f0aa"
 
 CONTACTS_HTML = (
     "Со мной можно связаться по следующим контактам:\n\n"
@@ -54,6 +56,10 @@ class VKCakeBot:
         self.states: dict[int, str] = {}
         self.data: dict[int, dict[str, Any]] = {}
         self.greeted_users: set[int] = set()
+        self.media_id_batches: dict[int, list[dict[str, str | None]]] = {}
+        self.media_id_tasks: dict[int, asyncio.Task] = {}
+        self.works_offsets: dict[int, int] = {}
+        self.works_locks: dict[int, asyncio.Lock] = {}
 
     async def handle_update(self, update: dict[str, Any]):
         if update.get("type") == "message_event":
@@ -80,6 +86,12 @@ class VKCakeBot:
         if command:
             handled = await self.handle_command(peer_id, user_id, command, attachments)
             if handled:
+                return
+
+        if attachments and not self.states.get(user_id):
+            media_items = self._vk_media_items(attachments)
+            if media_items:
+                self._queue_media_ids(peer_id, media_items)
                 return
 
         await self.handle_state(peer_id, user_id, text, attachments)
@@ -120,13 +132,16 @@ class VKCakeBot:
             await self.show_product(peer_id, command)
             return True
         if command == "view_works":
-            await self.show_works(peer_id)
+            await self.show_works(peer_id, user_id)
+            return True
+        if command == "works_more":
+            await self.show_works_chunk(peer_id, user_id)
             return True
         if command == "reviews":
             await self.show_reviews(peer_id)
             return True
         if command == "about":
-            await self.send_vk(peer_id, ABOUT_HTML, keyboard=keyboards.back_menu())
+            await self.send_vk(peer_id, ABOUT_HTML, keyboard=keyboards.back_menu(), attachment=ABOUT_VK_PHOTO_ID)
             return True
         if command == "contact_me":
             await self.send_vk(peer_id, CONTACTS_HTML, keyboard=keyboards.back_menu())
@@ -248,6 +263,8 @@ class VKCakeBot:
     async def show_main_menu(self, peer_id: int, user_id: int, greeting: bool):
         self.states.pop(user_id, None)
         self.data.pop(user_id, None)
+        self.works_offsets.pop(user_id, None)
+        self.works_locks.pop(user_id, None)
         user_name = await self.get_vk_user_name(user_id)
         await self.db.add_user(telegram_id=-user_id, fullname=user_name, username=f"vk.com/id{user_id}")
 
@@ -282,13 +299,23 @@ class VKCakeBot:
             attachment=item.get("file_id"),
         )
 
-    async def show_works(self, peer_id: int):
+    async def show_works(self, peer_id: int, user_id: int):
+        self.works_offsets[user_id] = 0
+        await self.send_vk(peer_id, "Здесь Вы можете ознакомится с моими работами")
+        await self.show_works_chunk(peer_id, user_id)
+
+    async def show_works_chunk(self, peer_id: int, user_id: int):
+        lock = self.works_locks.setdefault(user_id, asyncio.Lock())
+        async with lock:
+            await self._show_works_chunk_locked(peer_id, user_id)
+
+    async def _show_works_chunk_locked(self, peer_id: int, user_id: int):
         works = await self.db.get_works()
         if not works:
             await self.send_vk(peer_id, "Пока нет доступных работ 😢", keyboard=keyboards.back_menu())
             return
 
-        vk_media = [work for work in works if self._is_vk_attachment(work.get("file_id"))]
+        vk_media = [work for work in works if self._is_vk_attachment(work.get("vk_file_id"))]
         if not vk_media:
             await self.send_vk(
                 peer_id,
@@ -299,9 +326,27 @@ class VKCakeBot:
             )
             return
 
-        for work in vk_media[:10]:
-            await self.send_vk(peer_id, "📸 Наши готовые работы", attachment=work["file_id"])
-        await self.send_vk(peer_id, "Главное меню:", keyboard=keyboards.back_menu())
+        offset = self.works_offsets.get(user_id, 0)
+        chunk = vk_media[offset:offset + 10]
+        if not chunk:
+            await self.send_vk(peer_id, "Вы посмотрели все доступные работы.", keyboard=keyboards.works_menu(False))
+            return
+
+        attachments = ",".join(work["vk_file_id"] for work in chunk)
+        try:
+            await self.send_vk(peer_id, "", attachment=attachments)
+        except Exception as exc:
+            print(f"[VK WARN] Failed to send works chunk as one message: {exc}")
+            for work in chunk:
+                try:
+                    await self.send_vk(peer_id, "📸", attachment=work["vk_file_id"])
+                except Exception as item_exc:
+                    print(f"[VK WARN] Failed to send work media {work.get('id')}: {item_exc}")
+
+        next_offset = offset + len(chunk)
+        self.works_offsets[user_id] = next_offset
+        has_more = next_offset < len(vk_media)
+        await self.send_vk(peer_id, f"Показано {next_offset} из {len(vk_media)}", keyboard=keyboards.works_menu(has_more))
 
     async def show_reviews(self, peer_id: int):
         reviews = await self.db.get_reviews()
@@ -454,8 +499,25 @@ class VKCakeBot:
             peer_id=peer_id,
             text=self.render_vk_text(text),
             keyboard=keyboard,
-            attachment=attachment if self._is_vk_attachment(attachment) else None,
+            attachment=attachment if self._is_vk_attachment_list(attachment) else None,
         )
+
+    def _queue_media_ids(self, peer_id: int, media_items: list[dict[str, str | None]]):
+        self.media_id_batches.setdefault(peer_id, []).extend(media_items)
+        task = self.media_id_tasks.get(peer_id)
+        if task and not task.done():
+            task.cancel()
+        self.media_id_tasks[peer_id] = asyncio.create_task(self._flush_media_ids(peer_id))
+
+    async def _flush_media_ids(self, peer_id: int):
+        try:
+            await asyncio.sleep(2)
+            media_items = self.media_id_batches.pop(peer_id, [])
+            self.media_id_tasks.pop(peer_id, None)
+            if media_items:
+                await self.send_vk(peer_id, self._vk_media_ids_text(media_items))
+        except asyncio.CancelledError:
+            return
 
     async def notify_telegram_admins(self, text: str, order: dict[str, Any]):
         token = self.env_value("BOT_TOKEN")
@@ -542,15 +604,25 @@ class VKCakeBot:
 
     @staticmethod
     def _text_to_command(text: str) -> str | None:
-        normalized = text.strip().lower()
+        normalized = " ".join(text.strip().lower().replace("ё", "е").split())
         if normalized in ("/start", "start", "старт", "меню", "начать"):
             return "start"
         if normalized in ("/help", "help", "помощь"):
             return "help"
+        if normalized == "показать еще":
+            return "works_more"
+        if normalized in ("в главное меню", "⬅️ в главное меню"):
+            return "back"
         return None
 
     @staticmethod
     def _first_vk_media(attachments: list[dict[str, Any]]) -> dict[str, str | None] | None:
+        media_items = VKCakeBot._vk_media_items(attachments)
+        return media_items[0] if media_items else None
+
+    @staticmethod
+    def _vk_media_items(attachments: list[dict[str, Any]]) -> list[dict[str, str | None]]:
+        media_items = []
         for attachment in attachments:
             kind = attachment.get("type")
             obj = attachment.get(kind, {})
@@ -561,12 +633,21 @@ class VKCakeBot:
                 value = f"{kind}{owner_id}_{item_id}"
                 if access_key:
                     value += f"_{access_key}"
-                return {
-                    "type": kind,
-                    "attachment": value,
-                    "url": VKCakeBot._vk_media_url(kind, obj),
-                }
-        return None
+                media_items.append(
+                    {
+                        "type": kind,
+                        "attachment": value,
+                        "url": VKCakeBot._vk_media_url(kind, obj),
+                    }
+                )
+        return media_items
+
+    @staticmethod
+    def _vk_media_ids_text(media_items: list[dict[str, str | None]]) -> str:
+        lines = ["ID медиафайлов для VK:"]
+        for index, item in enumerate(media_items, 1):
+            lines.append(f"{index}. {item['attachment']}")
+        return "\n".join(lines)
 
     @staticmethod
     def _vk_media_url(kind: str, obj: dict[str, Any]) -> str | None:
@@ -591,6 +672,12 @@ class VKCakeBot:
     @staticmethod
     def _is_vk_attachment(value: str | None) -> bool:
         return bool(value and re.match(r"^(photo|video)-?\d+_\d+(?:_[A-Za-z0-9]+)?$", value))
+
+    @staticmethod
+    def _is_vk_attachment_list(value: str | None) -> bool:
+        if not value:
+            return False
+        return all(VKCakeBot._is_vk_attachment(item.strip()) for item in value.split(","))
 
     @staticmethod
     def render_vk_text(text: str) -> str:
