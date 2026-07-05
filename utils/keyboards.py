@@ -151,7 +151,7 @@ class Keyboards:
                 [InlineKeyboardButton(text="Самовывоз 📦",
                                       callback_data="logistics_pickup")],
                 [InlineKeyboardButton(
-                    text="Доставка 🚗", callback_data="logistics_delivery")],
+                    text="Доставка (доплата) 🚗", callback_data="logistics_delivery")],
             ]
         )
 

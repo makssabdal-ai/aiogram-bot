@@ -157,7 +157,7 @@ async def process_media_skip(callback: CallbackQuery, state: FSMContext):
     await state.update_data(media_type=None, media=None)
     await state.set_state(Form.additional_info)
     await callback.message.answer(
-        "Введите дополнительную информацию или пожелания (если есть):",
+        "Введите дополнительную информацию, адрес доставки или пожелания (если есть):",
         reply_markup=Keyboards.get_miss_keyboard()
     )
 
@@ -175,7 +175,7 @@ async def process_media_upload(message: Message, state: FSMContext):
 
     await state.set_state(Form.additional_info)
     await message.answer(
-        "Почти готово! Укажите дополнительную информацию (для доставки — точный адрес и время):",
+        "Почти готово! Укажите дополнительную информацию, адрес доставки (для доставки — точный адрес и время):",
         reply_markup=Keyboards.get_miss_keyboard()
     )
 

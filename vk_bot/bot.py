@@ -274,7 +274,7 @@ class VKCakeBot:
             self.states[user_id] = "additional_info"
             await self.send_vk(
                 peer_id,
-                "Почти готово! Укажите дополнительную информацию (для доставки — точный адрес и время):",
+                "Почти готово! Укажите дополнительную информацию, адрес доставки (для доставки — точный адрес и время):",
                 keyboard=keyboards.skip_menu(),
             )
             return
@@ -467,7 +467,7 @@ class VKCakeBot:
             self.states[user_id] = "additional_info"
             await self.send_vk(
                 peer_id,
-                "Введите дополнительную информацию или пожелания (если есть):",
+                "Введите дополнительную информацию, адрес доставки или пожелания (если есть):",
                 keyboard=keyboards.skip_menu(),
             )
             return

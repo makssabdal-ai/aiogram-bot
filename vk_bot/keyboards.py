@@ -121,7 +121,7 @@ def logistics_menu() -> str:
     return keyboard(
         [
             [_button("Самовывоз", "logistics_pickup")],
-            [_button("Доставка", "logistics_delivery")],
+            [_button("Доставка (доплата)", "logistics_delivery")],
         ],
         inline=True,
     )

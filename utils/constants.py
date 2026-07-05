@@ -19,5 +19,5 @@ SIZES = {
 # Способы получения десерта
 LOGISTICS = {
     "logistics_pickup": "Самовывоз",
-    "logistics_delivery": "Доставка",
+    "logistics_delivery": "Доставка (доплата)",
 }
