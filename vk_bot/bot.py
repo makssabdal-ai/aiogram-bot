@@ -10,6 +10,7 @@ import aiohttp
 from dotenv import dotenv_values
 
 from database.db import Database
+from utils.consent import CONSENT_DOCUMENT_VERSION, consent_document_url, vk_consent_text
 from utils.constants import CAKE_NAMES, LOGISTICS, SIZES
 from utils.validators import Validators
 from vk_bot import keyboards
@@ -115,6 +116,27 @@ class VKCakeBot:
 
         print(f"[VK WARN] Callback event without command payload: {payload}")
 
+    async def ensure_personal_data_consent(self, peer_id: int, user_id: int) -> bool:
+        db_user_id = -user_id
+        if await self.db.has_personal_data_consent(db_user_id):
+            return True
+
+        user_name = await self.get_vk_user_name(user_id)
+        await self.db.add_user(telegram_id=db_user_id, fullname=user_name, username=f"vk.com/id{user_id}")
+        await self.send_vk(peer_id, vk_consent_text(), keyboard=keyboards.personal_data_consent_menu())
+        return False
+
+    async def accept_personal_data_consent(self, peer_id: int, user_id: int):
+        user_name = await self.get_vk_user_name(user_id)
+        await self.db.set_personal_data_consent(
+            telegram_id=-user_id,
+            fullname=user_name,
+            username=f"vk.com/id{user_id}",
+            platform="vk",
+            document=f"{CONSENT_DOCUMENT_VERSION}: {consent_document_url()}",
+        )
+        await self.start_order(peer_id, user_id)
+
     async def handle_command(
         self,
         peer_id: int,
@@ -147,7 +169,12 @@ class VKCakeBot:
             await self.send_vk(peer_id, CONTACTS_HTML, keyboard=keyboards.back_menu())
             return True
         if command == "make_order":
+            if not await self.ensure_personal_data_consent(peer_id, user_id):
+                return True
             await self.start_order(peer_id, user_id)
+            return True
+        if command == "personal_data_consent_accept":
+            await self.accept_personal_data_consent(peer_id, user_id)
             return True
         if command == "edit_order":
             await self.start_order(peer_id, user_id)
@@ -292,11 +319,12 @@ class VKCakeBot:
         if not item:
             await self.send_vk(peer_id, "Товар не найден.", keyboard=keyboards.back_menu())
             return
+        attachment = self._catalog_vk_attachment(item)
         await self.send_vk(
             peer_id,
             f"<b>{item['title']}</b>\n\n{item['description']}",
             keyboard=keyboards.product_back_menu(),
-            attachment=item.get("file_id"),
+            attachment=attachment,
         )
 
     async def show_works(self, peer_id: int, user_id: int):
@@ -352,6 +380,14 @@ class VKCakeBot:
         reviews = await self.db.get_reviews()
         if not reviews:
             await self.send_vk(peer_id, "Пока нет отзывов 😢", keyboard=keyboards.back_menu())
+            return
+
+        vk_media = [review for review in reviews if self._is_vk_attachment(review.get("vk_file_id"))]
+        if vk_media:
+            for index in range(0, len(vk_media), 10):
+                attachments = ",".join(review["vk_file_id"] for review in vk_media[index:index + 10])
+                await self.send_vk(peer_id, "", attachment=attachments)
+            await self.send_vk(peer_id, "Отзывы клиентов 💬", keyboard=keyboards.back_menu())
             return
 
         text_reviews = [r["text"] for r in reviews if r.get("text")]
@@ -422,7 +458,7 @@ class VKCakeBot:
         self.states[user_id] = "media"
         await self.send_vk(
             peer_id,
-            "Вы можете отправить фото или видео референса:",
+            "Вы можете отправить фото или видео примера:",
             keyboard=keyboards.skip_menu(),
         )
 
@@ -455,7 +491,7 @@ class VKCakeBot:
             f"⚖️ Размер: {self.html_escape(order['size'])}\n"
             f"📅 Забронированная дата: {self.html_escape(order['date_delivery'])}\n"
             f"🚗 Доставка: {self.html_escape(order['logistics'])}\n"
-            f"🖼 Референс: {media_text}\n"
+            f"🖼 Пример: {media_text}\n"
             f"📝 Комментарий: {self.html_escape(order['additional_info'])}"
         )
         await self.send_vk(peer_id, summary, keyboard=keyboards.check_menu())
@@ -572,7 +608,7 @@ class VKCakeBot:
                 return
 
         if vk_attachment:
-            text = f"{text}\n\nVK-референс: {self.html_escape(vk_attachment)}"
+            text = f"{text}\n\nVK-пример: {self.html_escape(vk_attachment)}"
             if media_url:
                 text = f"{text}\nСсылка на медиа: {self.html_escape(media_url)}"
 
@@ -609,6 +645,12 @@ class VKCakeBot:
             return "start"
         if normalized in ("/help", "help", "помощь"):
             return "help"
+        if normalized in (
+            "я прочитал(а) и согласен(на)",
+            "я прочитал и согласен",
+            "я прочитала и согласна",
+        ):
+            return "personal_data_consent_accept"
         if normalized == "показать еще":
             return "works_more"
         if normalized in ("в главное меню", "⬅️ в главное меню"):
@@ -678,6 +720,11 @@ class VKCakeBot:
         if not value:
             return False
         return all(VKCakeBot._is_vk_attachment(item.strip()) for item in value.split(","))
+
+    @staticmethod
+    def _catalog_vk_attachment(item: Any) -> str | None:
+        value = item.get("vk_file_id")
+        return value if VKCakeBot._is_vk_attachment(value) else None
 
     @staticmethod
     def render_vk_text(text: str) -> str:

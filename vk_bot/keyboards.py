@@ -60,6 +60,10 @@ def main_menu() -> str:
     )
 
 
+def personal_data_consent_menu() -> str:
+    return keyboard([[_button("Я прочитал(а) и согласен(на)", "personal_data_consent_accept", "positive")]])
+
+
 def back_menu() -> str:
     return keyboard([[_button("В главное меню", "back", "primary")]])
 

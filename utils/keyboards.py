@@ -2,6 +2,8 @@ import re
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram_calendar import SimpleCalendar
 
+from utils.consent import CONSENT_CALLBACK
+
 
 class Keyboards:
     """Класс-фабрика генерации инлайн-клавиатур интерфейса бота"""
@@ -38,6 +40,17 @@ class Keyboards:
                         text="✨ Сделать заказ ✨", callback_data="make_order")
                 ]
             ]
+        )
+
+    @staticmethod
+    def get_personal_data_consent_keyboard() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Я прочитал(а) и согласен(на)",
+                    callback_data=CONSENT_CALLBACK,
+                )
+            ]]
         )
 
     @staticmethod

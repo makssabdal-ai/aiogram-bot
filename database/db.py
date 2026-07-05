@@ -24,9 +24,19 @@ class Database:
                 fullname TEXT,
                 phone TEXT,
                 username TEXT,
+                personal_data_consent BOOLEAN DEFAULT FALSE,
+                personal_data_consent_at TIMESTAMP WITH TIME ZONE,
+                personal_data_consent_platform TEXT,
+                personal_data_consent_document TEXT,
+                personal_data_consent_ip TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')
             )
             """)
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent BOOLEAN DEFAULT FALSE")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_at TIMESTAMP WITH TIME ZONE")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_platform TEXT")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_document TEXT")
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS personal_data_consent_ip TEXT")
 
             # Каталог
             await conn.execute("""
@@ -35,10 +45,14 @@ class Database:
                 title TEXT,
                 description TEXT,
                 file_id TEXT,
+                vk_file_id TEXT,
                 media_type TEXT,
+                vk_media_type TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')
             )
             """)
+            await conn.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS vk_file_id TEXT")
+            await conn.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS vk_media_type TEXT")
 
             # Готовые работы
             await conn.execute("""
@@ -63,10 +77,12 @@ class Database:
                 file_id TEXT,
                 vk_file_id TEXT,
                 media_type TEXT,
+                vk_media_type TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
             )
             """)
             await conn.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS vk_file_id TEXT")
+            await conn.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS vk_media_type TEXT")
 
             # Заказы
             await conn.execute("""
@@ -106,6 +122,46 @@ class Database:
                                phone,
                                username
                                )
+
+    async def has_personal_data_consent(self, telegram_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            return bool(await conn.fetchval("""
+                SELECT personal_data_consent
+                FROM users
+                WHERE telegram_id = $1
+            """, telegram_id))
+
+    async def set_personal_data_consent(
+        self,
+        telegram_id: int,
+        fullname: str | None = None,
+        username: str | None = None,
+        platform: str | None = None,
+        document: str | None = None,
+        ip: str | None = None,
+    ):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO users (
+                    telegram_id,
+                    fullname,
+                    username,
+                    personal_data_consent,
+                    personal_data_consent_at,
+                    personal_data_consent_platform,
+                    personal_data_consent_document,
+                    personal_data_consent_ip
+                )
+                VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, $4, $5, $6)
+                ON CONFLICT (telegram_id) DO UPDATE SET
+                    fullname = COALESCE(EXCLUDED.fullname, users.fullname),
+                    username = COALESCE(EXCLUDED.username, users.username),
+                    personal_data_consent = TRUE,
+                    personal_data_consent_at = CURRENT_TIMESTAMP,
+                    personal_data_consent_platform = EXCLUDED.personal_data_consent_platform,
+                    personal_data_consent_document = EXCLUDED.personal_data_consent_document,
+                    personal_data_consent_ip = EXCLUDED.personal_data_consent_ip
+            """, telegram_id, fullname, username, platform, document, ip)
 
     async def get_users(self):
         async with self.pool.acquire() as conn:
@@ -163,6 +219,7 @@ class Database:
             return await conn.fetch("""
                 SELECT *
                 FROM catalog
+                WHERE title IS NOT NULL
                 ORDER BY created_at DESC
             """)
 
@@ -172,6 +229,7 @@ class Database:
                 SELECT *
                 FROM catalog
                 WHERE id = $1
+                  AND title IS NOT NULL
             """, product_id)
 
     # ================= WORKS =================

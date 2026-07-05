@@ -17,6 +17,10 @@ def telegram_works(works: list) -> list:
     ]
 
 
+def telegram_reviews(reviews: list) -> list:
+    return [review for review in reviews if review.get("file_id")]
+
+
 @router.callback_query(F.data == "catalog")
 async def callback_catalog(callback: CallbackQuery, db: Database):
     """Отображение каталога товаров"""
@@ -231,7 +235,7 @@ async def send_works_chunk(message: Message, works: list, offset: int, state: FS
 async def callback_reviews(callback: CallbackQuery, db: Database):
     """Просмотр отзывов клиентов"""
     await callback.answer()
-    reviews_list = await db.get_reviews()
+    reviews_list = telegram_reviews(await db.get_reviews())
 
     if not reviews_list:
         await callback.message.answer(

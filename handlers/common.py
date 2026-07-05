@@ -9,19 +9,9 @@ from utils.keyboards import Keyboards
 router = Router()
 
 
-@router.message(Command("start"))
-@router.message(F.text.lower() == "старт")
-async def cmd_start(message: Message, db: Database):
-    """Обработчик команды /start"""
-    # Добавляем пользователя в базу данных при первом старте
-    await db.add_user(
-        telegram_id=message.from_user.id,
-        fullname=message.from_user.first_name,
-        username=message.from_user.username
-    )
-
-    welcome_text = (
-        f"<b>Привет, {message.from_user.first_name}!</b>\n"
+def get_welcome_text(first_name: str) -> str:
+    return (
+        f"<b>Привет, {first_name}!</b>\n"
         f"Я <i>Poli</i>, новый телеграмм-бот.\n\n"
         f"Зачем я нужен? Отвечу просто — для удобства коммуникации и связи) 😉\n\n"
         f"Что здесь есть?\n\n"
@@ -33,7 +23,20 @@ async def cmd_start(message: Message, db: Database):
         f"Устраиватесь поудобнее и давайте начнем наше сладкое путешествие! 🎂✨ \n\n"
         f"<i>created by Smirnov</i>"
     )
-    await message.answer(welcome_text, reply_markup=Keyboards.get_main_menu(), parse_mode="HTML")
+
+
+@router.message(Command("start"))
+@router.message(F.text.lower() == "старт")
+async def cmd_start(message: Message, db: Database):
+    """Обработчик команды /start"""
+    # Добавляем пользователя в базу данных при первом старте
+    await db.add_user(
+        telegram_id=message.from_user.id,
+        fullname=message.from_user.first_name,
+        username=message.from_user.username
+    )
+
+    await message.answer(get_welcome_text(message.from_user.first_name), reply_markup=Keyboards.get_main_menu(), parse_mode="HTML")
 
 
 @router.message(Command("help"))

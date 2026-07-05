@@ -7,6 +7,12 @@ from aiogram_calendar import SimpleCalendarCallback, SimpleCalendar
 
 from database.db import Database
 from forms.user import Form
+from utils.consent import (
+    CONSENT_CALLBACK,
+    CONSENT_DOCUMENT_VERSION,
+    consent_document_url,
+    telegram_consent_text,
+)
 from utils.keyboards import Keyboards
 from utils.validators import Validators
 from utils.constants import CAKE_NAMES, SIZES, LOGISTICS
@@ -14,15 +20,40 @@ from utils.constants import CAKE_NAMES, SIZES, LOGISTICS
 router = Router()
 
 
-@router.callback_query(F.data == "make_order")
-async def order_start(callback: CallbackQuery, state: FSMContext):
-    """Начало цепочки заказа"""
-    await callback.answer()
+async def start_order_form(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Form.fullname)
     await callback.message.answer(
         "Давайте создадим заявку Вашего заказа. Для начала введите Ваше ФИО:",
         reply_markup=Keyboards.get_back_keyboard()
     )
+
+
+@router.callback_query(F.data == "make_order")
+async def order_start(callback: CallbackQuery, state: FSMContext, db: Database):
+    """Начало цепочки заказа"""
+    await callback.answer()
+    if not await db.has_personal_data_consent(callback.from_user.id):
+        await callback.message.answer(
+            telegram_consent_text(),
+            reply_markup=Keyboards.get_personal_data_consent_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    await start_order_form(callback, state)
+
+
+@router.callback_query(F.data == CONSENT_CALLBACK)
+async def callback_personal_data_consent(callback: CallbackQuery, state: FSMContext, db: Database):
+    await db.set_personal_data_consent(
+        telegram_id=callback.from_user.id,
+        fullname=callback.from_user.first_name,
+        username=callback.from_user.username,
+        platform="telegram",
+        document=f"{CONSENT_DOCUMENT_VERSION}: {consent_document_url()}",
+    )
+    await callback.answer("Согласие сохранено.")
+    await start_order_form(callback, state)
 
 
 @router.message(StateFilter(Form.fullname), F.text)
@@ -116,12 +147,12 @@ async def process_logistics_choice(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
     await state.set_state(Form.media)
-    await callback.message.answer("Вы можете отправить фото или видео референса:", reply_markup=Keyboards.get_miss_keyboard())
+    await callback.message.answer("Вы можете отправить фото или видео примера:", reply_markup=Keyboards.get_miss_keyboard())
 
 
 @router.callback_query(Form.media, F.data == "skip")
 async def process_media_skip(callback: CallbackQuery, state: FSMContext):
-    """Пропуск шага с референсом"""
+    """Пропуск шага с примером"""
     await callback.answer("Шаг пропущен.")
     await state.update_data(media_type=None, media=None)
     await state.set_state(Form.additional_info)
@@ -178,7 +209,7 @@ async def send_order_summary(message: Message, state: FSMContext):
         f"⚖️ Размер: {data['size']}\n"
         f"📅 Забронированная дата: {data['date_delivery']}\n"
         f"🚗 Доставка: {data['logistics']}\n"
-        f"🖼 Референс: {media_text}\n"
+        f"🖼 Пример: {media_text}\n"
         f"📝 Комментарий: {data['additional_info']}"
     )
     await message.answer(summary, reply_markup=Keyboards.get_check_keyboard())
