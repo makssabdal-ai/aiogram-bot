@@ -3,6 +3,7 @@ aiogram==3.28.2
 aiogram_calendar==0.6.0
 aiohappyeyeballs==2.6.2
 aiohttp==3.13.5
+aiohttp-socks==0.12.0
 aiosignal==1.4.0
 aiosqlite==0.22.1
 annotated-types==0.7.0

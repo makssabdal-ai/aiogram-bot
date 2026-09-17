@@ -4,6 +4,7 @@ import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from dotenv import load_dotenv
 
 from database.db import Database
@@ -34,6 +35,7 @@ async def main():
     # Инициализация бота и диспетчера
     bot = Bot(
         token=TOKEN,
+        session=AiohttpSession(proxy=getenv("BOT_PROXY") or None),
         default=DefaultBotProperties(parse_mode="HTML")
     )
     dp = Dispatcher()
@@ -55,7 +57,7 @@ async def main():
             timeout=60
         )
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
+        print("Bot stopped by user")
     finally:
         # Гарантированное закрытие сессий при остановке
         await db.close()

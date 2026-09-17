@@ -13,8 +13,9 @@ from database.db import Database
 from utils.consent import CONSENT_DOCUMENT_VERSION, consent_document_url, vk_consent_text
 from utils.constants import CAKE_NAMES, LOGISTICS, SIZES
 from utils.validators import Validators
+from utils.http import create_http_session
 from vk_bot import keyboards
-from vk_bot.client import VKClient
+from vk_bot.client import VKApiError, VKClient
 
 
 WELCOME_HTML = (
@@ -38,7 +39,7 @@ ABOUT_HTML = (
     "На заказ работаю около двух лет, и за это время собрала не только навыки, "
     "но и искренние «спасибо» от клиентов. 🙏💕"
 )
-ABOUT_VK_PHOTO_ID = "photo491400521_457250277_1573833bd4fde8f0aa"
+ABOUT_VK_PHOTO_ID = "photo491400521_457250377_39b40ab25cda9007a3"
 
 CONTACTS_HTML = (
     "Со мной можно связаться по следующим контактам:\n\n"
@@ -77,7 +78,8 @@ class VKCakeBot:
 
         text = (message.get("text") or "").strip()
         payload = self._get_payload(message)
-        command = payload.get("cmd") if payload else self._text_to_command(text)
+        command = payload.get(
+            "cmd") if payload else self._text_to_command(text)
         attachments = message.get("attachments") or []
 
         if command == "back":
@@ -117,19 +119,18 @@ class VKCakeBot:
         print(f"[VK WARN] Callback event without command payload: {payload}")
 
     async def ensure_personal_data_consent(self, peer_id: int, user_id: int) -> bool:
-        db_user_id = -user_id
-        if await self.db.has_personal_data_consent(db_user_id):
+        if await self.db.has_personal_data_consent(vk_id=user_id):
             return True
 
         user_name = await self.get_vk_user_name(user_id)
-        await self.db.add_user(telegram_id=db_user_id, fullname=user_name, username=f"vk.com/id{user_id}")
+        await self.db.add_user(vk_id=user_id, fullname=user_name, username=f"vk.com/id{user_id}")
         await self.send_vk(peer_id, vk_consent_text(), keyboard=keyboards.personal_data_consent_menu())
         return False
 
     async def accept_personal_data_consent(self, peer_id: int, user_id: int):
         user_name = await self.get_vk_user_name(user_id)
         await self.db.set_personal_data_consent(
-            telegram_id=-user_id,
+            vk_id=user_id,
             fullname=user_name,
             username=f"vk.com/id{user_id}",
             platform="vk",
@@ -289,7 +290,7 @@ class VKCakeBot:
         self.works_offsets.pop(user_id, None)
         self.works_locks.pop(user_id, None)
         user_name = await self.get_vk_user_name(user_id)
-        await self.db.add_user(telegram_id=-user_id, fullname=user_name, username=f"vk.com/id{user_id}")
+        await self.db.add_user(vk_id=user_id, fullname=user_name, username=f"vk.com/id{user_id}")
 
         if greeting:
             self.greeted_users.add(user_id)
@@ -339,7 +340,8 @@ class VKCakeBot:
             await self.send_vk(peer_id, "Пока нет доступных работ 😢", keyboard=keyboards.back_menu())
             return
 
-        vk_media = [work for work in works if self._is_vk_attachment(work.get("vk_file_id"))]
+        vk_media = [work for work in works if self._is_vk_attachment(
+            work.get("vk_file_id"))]
         if not vk_media:
             await self.send_vk(
                 peer_id,
@@ -357,20 +359,21 @@ class VKCakeBot:
             return
 
         attachments = ",".join(work["vk_file_id"] for work in chunk)
-        try:
-            await self.send_vk(peer_id, "", attachment=attachments)
-        except Exception as exc:
-            print(f"[VK WARN] Failed to send works chunk as one message: {exc}")
-            for work in chunk:
-                try:
-                    await self.send_vk(peer_id, "📸", attachment=work["vk_file_id"])
-                except Exception as item_exc:
-                    print(f"[VK WARN] Failed to send work media {work.get('id')}: {item_exc}")
-
         next_offset = offset + len(chunk)
+        try:
+            await self.send_vk(
+                peer_id, f"Работы {offset + 1}–{next_offset} из {len(vk_media)}",
+                attachment=attachments,
+                keyboard=keyboards.works_menu(next_offset < len(vk_media)),
+            )
+        except (VKApiError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            print(f"[VK WARN] Works page delivery failed: {exc}")
+            await self.send_vk(
+                peer_id, "Не удалось загрузить вложения этой страницы. Нажмите «Показать еще», чтобы повторить.",
+                keyboard=keyboards.works_menu(True),
+            )
+            return
         self.works_offsets[user_id] = next_offset
-        has_more = next_offset < len(vk_media)
-        await self.send_vk(peer_id, f"Показано {next_offset} из {len(vk_media)}", keyboard=keyboards.works_menu(has_more))
 
     async def show_reviews(self, peer_id: int):
         reviews = await self.db.get_reviews()
@@ -378,12 +381,26 @@ class VKCakeBot:
             await self.send_vk(peer_id, "Пока нет отзывов 😢", keyboard=keyboards.back_menu())
             return
 
-        vk_media = [review for review in reviews if self._is_vk_attachment(review.get("vk_file_id"))]
+        vk_media = [review for review in reviews if self._is_vk_attachment(
+            review.get("vk_file_id"))]
         if vk_media:
             for index in range(0, len(vk_media), 10):
-                attachments = ",".join(review["vk_file_id"] for review in vk_media[index:index + 10])
-                await self.send_vk(peer_id, "", attachment=attachments)
-            await self.send_vk(peer_id, "Отзывы клиентов 💬", keyboard=keyboards.back_menu())
+                end = min(index + 10, len(vk_media))
+                attachments = ",".join(review["vk_file_id"]
+                                       for review in vk_media[index:index + 10])
+                try:
+                    await self.send_vk(
+                        peer_id, f"Отзывы {index + 1}–{end} из {len(vk_media)}",
+                        attachment=attachments,
+                        keyboard=keyboards.back_menu() if end == len(vk_media) else None,
+                    )
+                except (VKApiError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                    print(f"[VK WARN] Reviews delivery failed: {exc}")
+                    await self.send_vk(
+                        peer_id, "Не удалось загрузить вложения отзывов. Попробуйте открыть раздел ещё раз.",
+                        keyboard=keyboards.back_menu(),
+                    )
+                    return
             return
 
         text_reviews = [r["text"] for r in reviews if r.get("text")]
@@ -477,7 +494,8 @@ class VKCakeBot:
 
     async def send_order_summary(self, peer_id: int, user_id: int):
         order = self.data[user_id]
-        media_text = "Фото" if order.get("media_type") == "photo" else "Видео" if order.get("media_type") == "video" else "Не прикреплено"
+        media_text = "Фото" if order.get("media_type") == "photo" else "Видео" if order.get(
+            "media_type") == "video" else "Не прикреплено"
         summary = (
             "📋 <b>Проверьте вашу заявку:</b>\n\n"
             f"👤 ФИО: {self.html_escape(order['fullname'])}\n"
@@ -498,7 +516,7 @@ class VKCakeBot:
             await self.send_vk(peer_id, "Ошибка сессии. Сформируйте заказ заново.")
             return
 
-        await self.db.add_order(telegram_id=-user_id, data=order)
+        await self.db.add_order(vk_id=user_id, data=order)
         order_text = (
             "🆕 <b>Новый заказ из VK!</b>\n\n"
             f"ФИО: {self.html_escape(order['fullname'])}\n"
@@ -515,7 +533,8 @@ class VKCakeBot:
         self.states.pop(user_id, None)
         self.data.pop(user_id, None)
         if not notified:
-            print(f"[VK ERROR] Order from user {user_id} was saved, but Telegram admin notification failed")
+            print(
+                f"[VK ERROR] Order from user {user_id} was saved, but Telegram admin notification failed")
         await self.send_vk(
             peer_id,
             "Заказ принят! Скоро я свяжусь с вами для подтверждения 😊",
@@ -529,11 +548,13 @@ class VKCakeBot:
         keyboard: str | None = None,
         attachment: str | None = None,
     ):
+        if attachment and not self._is_vk_attachment_list(attachment):
+            raise ValueError("Invalid VK attachment list")
         await self.client.send_message(
             peer_id=peer_id,
             text=self.render_vk_text(text),
             keyboard=keyboard,
-            attachment=attachment if self._is_vk_attachment_list(attachment) else None,
+            attachment=attachment,
         )
 
     def _queue_media_ids(self, peer_id: int, media_items: list[dict[str, str | None]]):
@@ -541,7 +562,8 @@ class VKCakeBot:
         task = self.media_id_tasks.get(peer_id)
         if task and not task.done():
             task.cancel()
-        self.media_id_tasks[peer_id] = asyncio.create_task(self._flush_media_ids(peer_id))
+        self.media_id_tasks[peer_id] = asyncio.create_task(
+            self._flush_media_ids(peer_id))
 
     async def _flush_media_ids(self, peer_id: int):
         try:
@@ -557,17 +579,19 @@ class VKCakeBot:
         token = self.env_value("BOT_TOKEN")
         admin_ids = self.telegram_admin_ids()
         if not token or not admin_ids:
-            print("[VK ERROR] BOT_TOKEN or ADMIN_IDS is not configured; Telegram admin notification skipped")
+            print(
+                "[VK ERROR] BOT_TOKEN or ADMIN_IDS is not configured; Telegram admin notification skipped")
             return False
 
         sent_any = False
-        async with aiohttp.ClientSession() as session:
+        async with create_http_session() as session:
             for admin_id in admin_ids:
                 try:
                     if await self.send_telegram_order(session, token, admin_id, text, order):
                         sent_any = True
                 except Exception as exc:
-                    print(f"[VK ERROR] Failed to notify Telegram admin {admin_id}: {exc}")
+                    print(
+                        f"[VK ERROR] Failed to notify Telegram admin {admin_id}: {exc}")
         return sent_any
 
     async def send_telegram_order(
@@ -725,7 +749,8 @@ class VKCakeBot:
             sizes = obj.get("sizes") or []
             if not sizes:
                 return None
-            best = max(sizes, key=lambda item: item.get("width", 0) * item.get("height", 0))
+            best = max(sizes, key=lambda item: item.get(
+                "width", 0) * item.get("height", 0))
             return best.get("url")
         if kind == "video":
             return obj.get("player")

@@ -4,3 +4,4 @@
 .python-nuget/
 __pycache__/
 *.pyc
+.local/

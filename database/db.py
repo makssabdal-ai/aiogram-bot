@@ -1,4 +1,6 @@
 import asyncpg
+from pathlib import Path
+from urllib.parse import urlsplit
 
 
 class Database:
@@ -7,15 +9,18 @@ class Database:
         self.pool = None
 
     async def connect(self):
-        self.pool = await asyncpg.create_pool(self.dsn, ssl="require")
+        host = urlsplit(self.dsn).hostname
+        ssl = False if host in ("localhost", "127.0.0.1", "::1") else "require"
+        self.pool = await asyncpg.create_pool(self.dsn, ssl=ssl)
 
     async def close(self):
         if self.pool:
             await self.pool.close()
 
     async def init_tables(self):
-        async with self.pool.acquire() as conn:
-
+        async with self.pool.acquire() as conn, conn.transaction():
+            # Два бота могут одновременно запускаться с одной базой.
+            await conn.execute("SELECT pg_advisory_xact_lock(724019301)")
             # Пользователи
             await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -101,46 +106,63 @@ class Database:
             )
             """)
 
+            migration = Path(__file__).with_name("migrations") / "001_vk_identity.sql"
+            await conn.execute(migration.read_text(encoding="utf-8"))
+
     # ================= USERS =================
 
-    async def add_user(self, telegram_id, fullname, phone=None, username=None):
+    @staticmethod
+    def _identity(telegram_id=None, vk_id=None):
+        if (telegram_id is None) == (vk_id is None):
+            raise ValueError("Provide exactly one of telegram_id or vk_id")
+        value = telegram_id if telegram_id is not None else vk_id
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError("Platform user ID must be a positive integer")
+        return ("telegram_id" if telegram_id is not None else "vk_id"), value
+
+    async def add_user(self, telegram_id=None, fullname=None, phone=None, username=None, *, vk_id=None):
+        column, user_id = self._identity(telegram_id, vk_id)
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(f"""
             INSERT INTO users (
-                telegram_id,
+                {column},
                 fullname,
                 phone,
                 username
             )
             VALUES ($1, $2, $3, $4)
-            ON CONFLICT (telegram_id) DO NOTHING
+            ON CONFLICT ({column}) DO NOTHING
             """,
-                               telegram_id,
+                               user_id,
                                fullname,
                                phone,
                                username
                                )
 
-    async def has_personal_data_consent(self, telegram_id: int) -> bool:
+    async def has_personal_data_consent(self, telegram_id=None, *, vk_id=None) -> bool:
+        column, user_id = self._identity(telegram_id, vk_id)
         async with self.pool.acquire() as conn:
-            return bool(await conn.fetchval("""
+            return bool(await conn.fetchval(f"""
                 SELECT personal_data_consent
                 FROM users
-                WHERE telegram_id = $1
-            """, telegram_id))
+                WHERE {column} = $1
+            """, user_id))
 
     async def set_personal_data_consent(
         self,
-        telegram_id: int,
+        telegram_id: int | None = None,
         fullname: str | None = None,
         username: str | None = None,
         platform: str | None = None,
         document: str | None = None,
+        *,
+        vk_id: int | None = None,
     ):
+        column, user_id = self._identity(telegram_id, vk_id)
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(f"""
                 INSERT INTO users (
-                    telegram_id,
+                    {column},
                     fullname,
                     username,
                     personal_data_consent,
@@ -149,14 +171,14 @@ class Database:
                     personal_data_consent_document
                 )
                 VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, $4, $5)
-                ON CONFLICT (telegram_id) DO UPDATE SET
+                ON CONFLICT ({column}) DO UPDATE SET
                     fullname = COALESCE(EXCLUDED.fullname, users.fullname),
                     username = COALESCE(EXCLUDED.username, users.username),
                     personal_data_consent = TRUE,
                     personal_data_consent_at = CURRENT_TIMESTAMP,
                     personal_data_consent_platform = EXCLUDED.personal_data_consent_platform,
                     personal_data_consent_document = EXCLUDED.personal_data_consent_document
-            """, telegram_id, fullname, username, platform, document)
+            """, user_id, fullname, username, platform, document)
 
     async def get_users(self):
         async with self.pool.acquire() as conn:
@@ -168,11 +190,15 @@ class Database:
 
     # ================= ORDERS =================
 
-    async def add_order(self, telegram_id, data):
+    async def add_order(self, telegram_id=None, data=None, *, vk_id=None):
+        column, user_id = self._identity(telegram_id, vk_id)
+        order_column = "user_id" if column == "telegram_id" else "vk_id"
+        if data is None:
+            raise ValueError("Order data is required")
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            await conn.execute(f"""
             INSERT INTO orders (
-                user_id,
+                {order_column},
                 fullname,
                 phone_number,
                 account,
@@ -181,13 +207,15 @@ class Database:
                 date_delivery,
                 logistics,
                 media,
-                additional_info
+                additional_info,
+                vk_file_id,
+                vk_media_type
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
             )
             """,
-                               telegram_id,
+                               user_id,
                                data.get("fullname"),
                                data.get("phone_number"),
                                data.get("account"),
@@ -195,8 +223,10 @@ class Database:
                                data.get("size"),
                                data.get("date_delivery"),
                                data.get("logistics"),
-                               data.get("media"),
-                               data.get("additional_info")
+                               data.get("media") if vk_id is None else None,
+                               data.get("additional_info"),
+                               data.get("media") if vk_id is not None else None,
+                               data.get("media_type") if vk_id is not None else None
                                )
 
     async def get_orders(self):
@@ -234,7 +264,7 @@ class Database:
             return await conn.fetch("""
                 SELECT *
                 FROM works
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
             """)
 
     # ================= REVIEWS =================
@@ -244,7 +274,7 @@ class Database:
             return await conn.fetch("""
                 SELECT *
                 FROM reviews
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
             """)
 
     async def count_orders_by_date(self, date_str: str) -> int:

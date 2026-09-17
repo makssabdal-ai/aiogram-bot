@@ -4,6 +4,8 @@ from typing import Any
 
 import aiohttp
 
+from utils.http import create_http_session
+
 
 class VKApiError(RuntimeError):
     pass
@@ -30,7 +32,7 @@ class VKClient:
 
     async def connect(self):
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            self.session = create_http_session()
         await self.refresh_long_poll_server()
 
     async def close(self):
@@ -110,4 +112,22 @@ class VKClient:
             params["keyboard"] = keyboard
         if attachment:
             params["attachment"] = attachment
-        await self.api("messages.send", **params)
+        message_id = await self.api("messages.send", **params)
+        if attachment:
+            # VK может принять текст, молча отбросив недоступные вложения.
+            response = await self.api("messages.getById", message_ids=message_id)
+            items = response.get("items", [])
+            actual = []
+            for item in items:
+                for media in item.get("attachments", []):
+                    kind = media.get("type")
+                    actual.append(kind)
+            # VK может создавать копии фото с другими owner_id/id.
+            # Проверяем количество и типы, а не исходные идентификаторы.
+            expected = ["photo" if value.strip().startswith("photo") else "video"
+                        for value in attachment.split(",")]
+            if sorted(actual) != sorted(expected):
+                raise VKApiError(
+                    f"VK did not retain requested attachments: expected {len(expected)}, got {len(actual)}"
+                )
+        return message_id
